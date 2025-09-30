@@ -2,23 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../../lib/supabaseClient";
+import { supabase } from "../../../../../lib/supabaseClient";
 
 /**
  * Catch-all Supabase OAuth callback handler.
+ * File: app/auth/v1/callback/[...slug]/page.js
  *
  * Matches:
  *  - /auth/v1/callback
  *  - /auth/v1/callback/dashboard
  *  - /auth/v1/callback/anything/else
  *
- * Behavior:
- * 1. Try supabase.auth.getSessionFromUrl() (v2 helper). If available, use it to store session.
- * 2. If not available, try to parse access_token/refresh_token from window.location.hash and call setSession().
- * 3. Once session exists, get user and check for a profile in `user_profiles` table.
- *    - If no profile found, redirect to /profile (you can change this route).
- *    - Otherwise redirect to /dashboard.
- * 4. If anything fails, forward the fragment to /dashboard so your client code can still pick it up.
+ * Behavior: try supabase.auth.getSessionFromUrl(), fallback to moving hash;
+ * then redirect to /dashboard or /profile (if no profile).
  */
 
 export default function SupabaseCallbackCatchAll() {
@@ -26,23 +22,20 @@ export default function SupabaseCallbackCatchAll() {
   const [status, setStatus] = useState("Completing sign-in...");
 
   useEffect(() => {
-    let mounted = true;
-
     async function processCallback() {
       try {
         setStatus("Processing OAuth response...");
 
-        // 1) Preferred: let supabase parse and persist the session
+        // Preferred: have supabase parse & store the session for us
         if (supabase && typeof supabase.auth?.getSessionFromUrl === "function") {
           const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
           if (error) {
-            // Not fatal — continue to fallback
             console.warn("getSessionFromUrl returned error:", error);
           } else {
             console.log("Session created via getSessionFromUrl:", data);
           }
         } else {
-          // 2) Fallback: parse hash fragment manually and set session (for older clients)
+          // Fallback: parse hash fragment manually and set session (older clients)
           const hash = window.location.hash || "";
           const params = new URLSearchParams(hash.replace(/^#/, ""));
           const access_token = params.get("access_token");
@@ -50,7 +43,6 @@ export default function SupabaseCallbackCatchAll() {
 
           if (access_token) {
             setStatus("Storing session...");
-            // supabase v2 has setSession
             if (typeof supabase.auth?.setSession === "function") {
               await supabase.auth.setSession({ access_token, refresh_token });
               console.log("Session set via setSession fallback.");
@@ -62,7 +54,7 @@ export default function SupabaseCallbackCatchAll() {
           }
         }
 
-        // 3) Get current user (if session successfully stored)
+        // Verify user & choose destination
         setStatus("Verifying user...");
         let user = null;
         try {
@@ -70,16 +62,14 @@ export default function SupabaseCallbackCatchAll() {
           if (getUserErr) {
             console.warn("supabase.auth.getUser error:", getUserErr);
           } else {
-            user = userData?.user ?? userData; // adapt to possible shapes
+            user = userData?.user ?? userData;
           }
         } catch (e) {
           console.warn("getUser threw:", e);
         }
 
-        // default destination
         let destination = "/dashboard";
 
-        // If we found a user email, try to see if user_profiles exists and has a record
         if (user && user.email) {
           setStatus("Checking profile...");
           try {
@@ -91,45 +81,26 @@ export default function SupabaseCallbackCatchAll() {
 
             if (qerr) {
               console.warn("profile lookup error:", qerr);
-              // If table doesn't exist or query fails, just go to dashboard
             } else {
-              if (!rows || rows.length === 0) {
-                // No profile found -> route to /profile for first-time setup
-                destination = "/profile";
-              } else {
-                destination = "/dashboard";
-              }
+              destination = (!rows || rows.length === 0) ? "/profile" : "/dashboard";
             }
           } catch (err) {
             console.warn("profile check threw:", err);
           }
-        } else {
-          // if no user, still go to dashboard; dashboard client may handle session from hash
-          destination = "/dashboard";
         }
 
-        // final redirect (clean)
         setStatus("Finalizing...");
-        // If there's a hash with tokens present, some setups prefer to preserve them; but
-        // we assume session is stored already. Redirect without hash for cleanliness.
+        // Clean redirect (router.replace avoids history noise)
         router.replace(destination);
       } catch (err) {
         console.error("Callback handler failed:", err);
         // fallback: forward fragment to dashboard so client-side code can still catch it
         const frag = window.location.hash || "";
-        const forward = "/dashboard" + frag;
-        window.location.replace(forward);
+        window.location.replace("/dashboard" + frag);
       }
     }
 
-    // run only on client
-    if (typeof window !== "undefined") {
-      processCallback();
-    }
-
-    return () => {
-      mounted = false;
-    };
+    if (typeof window !== "undefined") processCallback();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
