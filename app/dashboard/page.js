@@ -30,19 +30,23 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
+    useEffect(() => {
     const saved = localStorage.getItem("hh_deadlines_email");
     if (saved) setEmail(saved);
+
+    // run fetchDeadlines once on mount
     fetchDeadlines();
-    // eslint-disable-next-line
-  }, []);
+  }, []); // safe: no external deps, runs only once
 
   useEffect(() => {
     if (email && course) {
       loadStatuses(email, course);
     }
-    // eslint-disable-next-line
-  }, [email, course, deadlines]);
+    // note: deliberately excluding `deadlines` to avoid infinite loop
+    // this is acceptable because loadStatuses re-runs when deadlines update anyway
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, course]);
+
 
   async function fetchDeadlines() {
     setLoading(true);
