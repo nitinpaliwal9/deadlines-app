@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 
 /**
@@ -160,12 +161,12 @@ export default function ProfilePage() {
           <p className="text-sm text-gray-600 mb-4">
             Please sign in using Google or email magic link to continue.
           </p>
-          <a
+          <Link
             href="/"
             className="inline-flex px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Go to sign in
-          </a>
+          </Link>
         </div>
       </div>
     );
